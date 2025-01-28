@@ -1,14 +1,4 @@
-complete docker-compose.yml script that sets up Node Exporter, Prometheus, and Grafana together. This configuration ensures that:
-
-Node Exporter collects system metrics.
-Prometheus scrapes the metrics from Node Exporter.
-Grafana connects to Prometheus to visualize the metrics.
-
-
-
-vi docker-compose.yml
-
-{version: '3'
+version: '3.8'
 
 services:
   # Node Exporter
@@ -16,70 +6,85 @@ services:
     image: prom/node-exporter:latest
     container_name: node-exporter
     ports:
-      - "9100:9100"  # Node Exporter exposes metrics on port 9100
+      - "9100:9100"  # Expose metrics on port 9100
     networks:
       - monitoring
     deploy:
+      replicas: 1
       resources:
         limits:
           memory: 200M
+        reservations:
+          memory: 100M
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "http://localhost:9100/metrics"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
   # Prometheus
   prometheus:
     image: prom/prometheus:latest
     container_name: prometheus
     volumes:
-      - ./prometheus.yml:/etc/prometheus/prometheus.yml  # Mount the custom Prometheus configuration
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml  # Custom Prometheus configuration
     ports:
-      - "9090:9090"  # Prometheus web UI on port 9090
+      - "9090:9090"  # Web UI on port 9090
     networks:
       - monitoring
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.retention.time=15d'  # Retain metrics for 15 days
     depends_on:
       - node-exporter
     deploy:
+      replicas: 1
       resources:
         limits:
           memory: 500M
+        reservations:
+          memory: 300M
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "http://localhost:9090/-/ready"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
   # Grafana
   grafana:
     image: grafana/grafana:latest
     container_name: grafana
     ports:
-      - "3000:3000"  # Grafana UI on port 3000
+      - "3000:3000"  # Web UI on port 3000
     environment:
-      - GF_SECURITY_ADMIN_PASSWORD=your_password  # Set your Grafana admin password
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=your_password  # Set admin password
     networks:
       - monitoring
     depends_on:
       - prometheus
     deploy:
+      replicas: 1
       resources:
         limits:
           memory: 500M
+        reservations:
+          memory: 300M
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "http://localhost:3000/login"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
 networks:
   monitoring:
-    driver: bridge}
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: monitoring_bridge
 
 
 
-
-
-
-
-
-
-
-prometheus.yml Configuration File
-You will need a custom prometheus.yml file for Prometheus to scrape the Node Exporter service. Create a prometheus.yml file in the same directory as your docker-compose.yml file with the following content:
-
-
-
-vi prometheus.yml
-
+      prometheus.yml
 
 
 {global:
@@ -88,15 +93,9 @@ vi prometheus.yml
 scrape_configs:
   - job_name: 'node_exporter'
     static_configs:
-      - targets: ['node-exporter:9100']  # Prometheus scrapes metrics from Node Exporter}
+      - targets: ['node-exporter:9100']  # Prometheus scrapes metrics from Node Exporter
+}
 
-
-
-Steps to Run:
-Create a directory for your project, e.g. monitoring, and navigate into it:
-
-bash:
-mkdir monitoring && cd monitoring
 
 
 bash:
@@ -112,5 +111,4 @@ Grafana: http://<your-server-ip>:3000
 Login to Grafana using the default credentials (admin / your_password), then configure Prometheus as a data source in Grafana (URL: http://prometheus:9090).
 
 Now you have Node Exporter, Prometheus, and Grafana running together, collecting system metrics and visualizing them.
-
-
+      
